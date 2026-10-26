@@ -213,18 +213,45 @@ results = m.search(
 Tune your vector store so filter-heavy queries stay fast. Index fields you frequently filter on and keep complex checks for later in the evaluation order.
 
 ```python
-# Ensure your vector store supports indexing on filtered fields
+from mem0 import Memory
+
 config = {
     "vector_store": {
         "provider": "qdrant",
         "config": {
             "host": "localhost",
-            "port": 6333,
-            "indexed_fields": ["category", "priority", "status", "user_id"]
+            "port": 6333
         }
     }
 }
+
+m = Memory.from_config(config)
 ```
+
+For a Qdrant server or Qdrant Cloud, Mem0 automatically creates keyword payload indexes for `user_id`, `agent_id`, `run_id`, and `actor_id`. It skips payload index creation in embedded mode (`path=`). `indexed_fields` is not a supported Mem0 configuration option.
+
+Create indexes for custom metadata fields directly with `qdrant-client`, after Mem0 has initialized the collection:
+
+```python
+from qdrant_client import QdrantClient, models
+
+client = QdrantClient(host="localhost", port=6333)
+try:
+    client.create_payload_index(
+        collection_name="mem0",  # Match your configured collection_name.
+        field_name="category",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
+    client.create_payload_index(
+        collection_name="mem0",
+        field_name="priority",
+        field_schema=models.PayloadSchemaType.INTEGER,
+    )
+finally:
+    client.close()
+```
+
+Metadata keys are stored at the top level of the Qdrant payload, so use `category`, not `metadata.category`. Match the index type to your stored values: a keyword index supports string equality filters, while an integer index supports numeric filters such as `{"priority": {"gte": 5}}`.
 
 <Info icon="check">
   After enabling indexing, benchmark the same query: latency should drop once the store can prune documents on indexed fields before vector scoring.
